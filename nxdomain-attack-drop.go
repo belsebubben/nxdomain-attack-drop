@@ -360,6 +360,8 @@ func sortedClientsbyfrequency(clientsByFreqTop map[string]*dnsclient) (map[int]s
 }
 
 func printIntermediarySecondRunStats(domainMap map[string]*domain, clientsByFreqTop map[string]*dnsclient) {
+	syncmapmutex.Lock() // new as of golang 1.8
+	defer syncmapmutex.Unlock()
 	var buffer bytes.Buffer
 	sortedclientbyfreq, frequencies := sortedClientsbyfrequency(clientsByFreqTop)
 
@@ -379,6 +381,7 @@ func printIntermediarySecondRunStats(domainMap map[string]*domain, clientsByFreq
 	//Print domain stats
 	dfrequencies := make([]int, 0, len(domainMap))
 	domainsByFreq := make(map[int][]string, len(domainMap))
+
 	for key, value := range domainMap {
 		domainsByFreq[value.freq] = append(domainsByFreq[value.freq], key)
 	}
@@ -588,12 +591,14 @@ Queryloop:
 
 			}
 
+			syncmapmutex.Lock()
 			if _, ok := domainMap[r.domain]; ok { // domain exist in map
 				domainMap[r.domain].freq += 1
 			} else {
 				domainMap[r.domain] = &domain{}
 				domainMap[r.domain].freq = 1
 			}
+			syncmapmutex.Unlock()
 
 			passes += 1
 			passesSince += 1
@@ -601,6 +606,7 @@ Queryloop:
 		case tick := <-ticker:
 			if !togglefreeze { // We renew the top clients
 				clientsByFreqTop = getClientsByFreq(queryMap)
+
 				go printIntermediarySecondRunStats(domainMap, clientsByFreqTop) // Dirty reads are ok
 			}
 
@@ -1141,6 +1147,7 @@ var userInputs = make(chan string)
 var clientMenuChan = make(chan map[string]*dnsclient)
 var clientFilterChan = make(chan []string)
 var clientBlockChan = make(chan []string)
+var syncmapmutex = &sync.RWMutex{}
 
 //var scrnLogBuffer bytes.Buffer //Log to screen
 //var ScrnLogger = log.New(scrnLogBuffer, "", 2)
@@ -1151,6 +1158,7 @@ func main() {
 	log.SetOutput(logFile)
 	defer logFile.Close()
 	syscall.Dup2(int(logFile.Fd()), 2) // log panic to file
+
 
 	//defer profile.Start(profile.CPUProfile).Stop() // Profiling
 

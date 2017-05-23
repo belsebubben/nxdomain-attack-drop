@@ -10,7 +10,8 @@ firewall drop script / command can be used. If using -pcap or -listen root
 privileges are needed.
 
 ### TODO
-- [ ] Fix mutex locks for update of go 1.8 > (will panic with newer versions of go)
+- [x] Fix mutex locks for update of go 1.8 > (will panic with newer versions of go)
+- [ ] Look at what happened to ncurses updates in menu windows
 
 ## Install on linux
 1. install Go 1.8 or later
