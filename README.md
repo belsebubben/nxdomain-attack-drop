@@ -9,6 +9,9 @@ client ip as an argument string. Default is to drop using iptables, your own
 firewall drop script / command can be used. If using -pcap or -listen root
 privileges are needed.
 
+### TODO
+- [ ] Fix mutex locks for update of go 1.8 > (will panic with newer versions of go)
+
 ## Install on linux
 1. install Go 1.8 or later
 2. git clone 
