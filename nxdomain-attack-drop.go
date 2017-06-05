@@ -26,6 +26,8 @@ import (
 	"time"
 )
 
+var mainhelpwininfo = "'m':menu; 'r': mem reset; 'q': quit; 'd': domainfilter"
+
 type configs struct {
 	logpath     string
 	listen      string
@@ -406,57 +408,6 @@ func printIntermediarySecondRunStats(domainMap map[string]*domain, clientsByFreq
 	mainScrnChan <- buffer.String()
 }
 
-func printIntermediaryStats(domainMap map[string]*domain, queryMap map[string]*dnsclient) {
-	var buffer bytes.Buffer
-	frequencies := make([]int, 0, len(queryMap))
-	clientsByFreq := make(map[int][]string, len(queryMap))
-
-	for key, value := range queryMap {
-		clientsByFreq[value.freq] = append(clientsByFreq[value.freq], key)
-	}
-
-	for frequency, _ := range clientsByFreq { //create an array that we can sort
-		frequencies = append(frequencies, frequency)
-	}
-	sort.Ints(frequencies)
-	ntopc := config.ntopc
-
-	if len(frequencies) < ntopc {
-		ntopc = len(frequencies)
-	}
-
-	fmt.Fprintf(&buffer, "%-12s %-16s\n", "Frequency", "Client(s)")
-
-	for _, frequency := range frequencies[len(frequencies)-ntopc:] {
-		fmt.Fprintf(&buffer, "%-12d %-16s\n", frequency, clientsByFreq[frequency])
-	} //End printing top clients
-
-	//Print domain stats
-	dfrequencies := make([]int, 0, len(domainMap))
-	domainsByFreq := make(map[int][]string, len(domainMap))
-	for key, value := range domainMap {
-		domainsByFreq[value.freq] = append(domainsByFreq[value.freq], key)
-	}
-
-	for frequency, _ := range domainsByFreq { //create an array that we can sort
-		dfrequencies = append(dfrequencies, frequency)
-	}
-
-	sort.Ints(dfrequencies)
-	ntopd := config.ntopd
-
-	if len(dfrequencies) < ntopd {
-		ntopd = len(dfrequencies)
-	}
-
-	fmt.Fprintf(&buffer, "\n%-18s %s\n", "Frequency", "Domain")
-
-	for _, frequency := range dfrequencies[len(dfrequencies)-ntopd:] {
-		fmt.Fprintf(&buffer, "%-18d %s\n", frequency, domainsByFreq[frequency])
-	} //End printing top domains
-	mainScrnChan <- buffer.String()
-
-}
 
 func blockClients(blockCmd string, clientIPs ...string) error {
 	var blockerror error
@@ -924,7 +875,8 @@ func inputToggler(toggle bool) func() {
 var toggleInput = inputToggler(true)
 var untoggleInput = inputToggler(false)
 
-func clientMenuscrn(stdscr *gc.Window, window *gc.Window, clientsByFreqTop map[string]*dnsclient) { // map of top offenders will be the menu
+func clientMenuscrn(stdscr *gc.Window, mainwin *gc.Window, helpwin *gc.Window, clientsByFreqTop map[string]*dnsclient) { // map of top offenders will be the menu
+
 
 	sortedclientbyfreq, frequencies := sortedClientsbyfrequency(clientsByFreqTop)
 
@@ -944,17 +896,36 @@ func clientMenuscrn(stdscr *gc.Window, window *gc.Window, clientsByFreqTop map[s
 		defer items[i].Free()
 	}
 
+	gc.StartColor()
+	gc.Raw(true)
+	gc.Echo(false)
+	gc.Cursor(0)
+	stdscr.Keypad(true)
+
+	//helpwin.Clear()
+	//helpwin.Printf("'<space>: mark'; 'b':block client; 'f': filter client; 'q': quit menu")
+	//helpwin.Refresh()
+	// TODO print header above menu + Cleanup 
+	y, _ := stdscr.MaxYX()
+	stdscr.MovePrint(y-3, 0, "'<space>: mark'; 'b':block client; 'f': filter client; 'q': quit menu ")
 	menu, _ := gc.NewMenu(items)
 	defer menu.UnPost()
 	defer menu.Free()
 	menu.Option(gc.O_ONEVALUE, false)
 	menu.Format(len(frequencies), 1)
-	window.Erase()
-	window.Refresh()
-	menu.SetWindow(window)
+	//mainwin.Erase()
+	//mainwin.Refresh()
+	menu.SetWindow(stdscr)  // This works
+	//menu.SetWindow(mainwin)	// Not this
+	mainwin.Erase()
+	mainwin.NoutRefresh()
+	mainwin.Print(menu.Count())
 	menu.Post()
+	mainwin.Print(menu)
 	time.Sleep(time.Millisecond * 50)
-	window.Refresh()
+	mainwin.NoutRefresh()
+	gc.Update()
+	//mainwin.Refresh()
 	var clientlist []string
 
 	// Pre set some items that are highly suspicious
@@ -965,8 +936,8 @@ func clientMenuscrn(stdscr *gc.Window, window *gc.Window, clientsByFreqTop map[s
 	}
 
 	for {
-		//gc.Update()
-		window.Refresh()
+		gc.Update()
+		mainwin.Refresh()
 		ch := stdscr.GetChar()
 
 		switch ch {
@@ -994,6 +965,10 @@ func clientMenuscrn(stdscr *gc.Window, window *gc.Window, clientsByFreqTop map[s
 			return
 
 		case 'q':
+			//helpwin.Clear()
+			//helpwin.Printf(mainhelpwininfo)
+			//helpwin.Refresh()
+			//helpScrnChan <- mainhelpwininfo
 			clientFilterChan <- []string{}
 			return
 		case ' ':
@@ -1011,7 +986,6 @@ func clientMenuscrn(stdscr *gc.Window, window *gc.Window, clientsByFreqTop map[s
 func screenHandler(stdscr *gc.Window, inputwin *gc.Window,
 	statswin *gc.Window, modewin *gc.Window, logwin *gc.Window, mainwin *gc.Window, headerwin *gc.Window, helpwin *gc.Window) {
 
-	mainhelpwininfo := "'m':menu; 'r': mem reset; 'q': quit; 'd': domainfilter"
 	helpwin.Printf(mainhelpwininfo)
 	helpwin.Refresh()
 
@@ -1042,21 +1016,9 @@ func screenHandler(stdscr *gc.Window, inputwin *gc.Window,
 			logwin.Refresh()
 
 		case clientsByFreqTop := <-clientMenuChan:
-			gc.StartColor()
-			gc.Raw(true)
-			gc.Echo(false)
-			gc.Cursor(0)
-			stdscr.Keypad(true)
-
-			helpwin.Clear()
-			helpwin.Printf("'<space>: mark'; 'b':block client; 'f': filter client; 'q': quit menu")
-			helpwin.Refresh()
-			clientMenuscrn(stdscr, mainwin, clientsByFreqTop)
+			clientMenuscrn(stdscr, mainwin, helpwin, clientsByFreqTop)
 			//toggleInput()
 			untoggleInput()
-			helpwin.Clear()
-			helpwin.Printf(mainhelpwininfo)
-			helpwin.Refresh()
 
 		case scrupdate := <-statsScrnChan:
 			statswin.MovePrint(scrupdate.row, scrupdate.col, scrupdate.data)
@@ -1144,7 +1106,7 @@ var togglemodeScrnChan = make(chan string)
 var untogglemodeScrnChan = make(chan string)
 var inputFilterChan = make(chan string)
 var userInputs = make(chan string)
-var clientMenuChan = make(chan map[string]*dnsclient)
+var clientMenuChan = make(chan map[string]*dnsclient) // Retreiving top client list and menu pick for actions
 var clientFilterChan = make(chan []string)
 var clientBlockChan = make(chan []string)
 var syncmapmutex = &sync.RWMutex{}
@@ -1158,7 +1120,6 @@ func main() {
 	log.SetOutput(logFile)
 	defer logFile.Close()
 	syscall.Dup2(int(logFile.Fd()), 2) // log panic to file
-
 
 	//defer profile.Start(profile.CPUProfile).Stop() // Profiling
 
